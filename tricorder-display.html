@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Medical Tricorder</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #000000;
+        --orange: #f9911e;
+        --purple: #cc99ff;
+        --blue: #8899ff;
+        --red: #c83a3a;
+        --green: #7ef7b8;
+        --text: #f5f1ea;
+      }
+
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        width: 100%;
+        background: var(--bg);
+        overflow: hidden;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      body {
+        font-family: "Antonio", sans-serif;
+        color: var(--text);
+        display: flex;
+        flex-direction: column;
+      }
+
+      .app {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        padding: 8px;
+        gap: 8px;
+        overflow: hidden;
+      }
+
+      .lcars-text {
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      /* Header */
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 12px;
+        background: linear-gradient(90deg, rgba(249, 145, 30, 0.12), transparent);
+        border-radius: 16px;
+        border: 1px solid rgba(249, 145, 30, 0.25);
+        flex-shrink: 0;
+      }
+
+      .header-title {
+        margin: 0;
+        font-size: clamp(0.9rem, 4vw, 1.2rem);
+        color: var(--orange);
+        letter-spacing: 0.12em;
+      }
+
+      .header-status {
+        font-size: 0.65rem;
+        color: var(--blue);
+        letter-spacing: 0.1em;
+      }
+
+      /* Main content scrollable area */
+      .content {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding-right: 2px;
+      }
+
+      /* Custom scrollbar */
+      .content::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      .content::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 3px;
+      }
+
+      .content::-webkit-scrollbar-thumb {
+        background: var(--orange);
+        border-radius: 3px;
+      }
+
+      /* Stats Grid */
+      .stats-section {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .stat-card {
+        background: rgba(136, 153, 255, 0.08);
+        border: 1px solid rgba(136, 153, 255, 0.25);
+        border-radius: 12px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .stat-label {
+        font-size: 0.6rem;
+        color: var(--blue);
+        letter-spacing: 0.1em;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+      }
+
+      .stat-value {
+        font-size: clamp(1.1rem, 6vw, 1.4rem);
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .stat-unit {
+        font-size: 0.55rem;
+        color: rgba(245, 241, 234, 0.6);
+        margin-top: 2px;
+      }
+
+      .stat-bar {
+        margin-top: 6px;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+
+      .stat-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--blue), var(--purple));
+        border-radius: 2px;
+        transition: width 0.6s ease;
+      }
+
+      /* Analyze Button */
+      .analyze-button {
+        width: 100%;
+        padding: clamp(12px, 4vh, 16px);
+        background: linear-gradient(135deg, var(--orange), #ff6b35);
+        border: none;
+        border-radius: 12px;
+        color: #000;
+        font-family: "Antonio", sans-serif;
+        font-size: clamp(0.9rem, 4vw, 1.1rem);
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        cursor: pointer;
+        text-transform: uppercase;
+        transition: all 0.2s ease;
+        flex-shrink: 0;
+        touch-action: manipulation;
+      }
+
+      .analyze-button:active {
+        transform: scale(0.98);
+        box-shadow: 0 0 20px rgba(249, 145, 30, 0.6);
+      }
+
+      .analyze-button:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
+
+      .analyze-button.loading {
+        background: linear-gradient(135deg, var(--purple), var(--blue));
+        animation: pulse 1.5s infinite;
+      }
+
+      @keyframes pulse {
+        0%, 100% {
+          opacity: 0.8;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+
+      /* Results Section */
+      .results-section {
+        background: rgba(249, 145, 30, 0.08);
+        border: 1px solid rgba(249, 145, 30, 0.25);
+        border-radius: 12px;
+        padding: 12px;
+        flex-shrink: 0;
+      }
+
+      .results-title {
+        font-size: 0.75rem;
+        color: var(--orange);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+      }
+
+      .analysis-result {
+        background: rgba(0, 0, 0, 0.3);
+        border-left: 3px solid var(--orange);
+        padding: 8px;
+        border-radius: 6px;
+        margin-bottom: 8px;
+      }
+
+      .analysis-result:last-child {
+        margin-bottom: 0;
+      }
+
+      .analysis-text {
+        font-size: 0.7rem;
+        line-height: 1.4;
+        color: var(--text);
+      }
+
+      /* Actions Section */
+      .actions-section {
+        background: rgba(126, 247, 184, 0.08);
+        border: 1px solid rgba(126, 247, 184, 0.25);
+        border-radius: 12px;
+        padding: 12px;
+        flex-shrink: 0;
+      }
+
+      .actions-title {
+        font-size: 0.75rem;
+        color: var(--green);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+      }
+
+      .action-item {
+        background: rgba(0, 0, 0, 0.3);
+        border-left: 3px solid var(--green);
+        padding: 8px;
+        border-radius: 6px;
+        margin-bottom: 6px;
+        font-size: 0.7rem;
+        line-height: 1.3;
+      }
+
+      .action-item:last-child {
+        margin-bottom: 0;
+      }
+
+      .action-item strong {
+        color: var(--green);
+        display: block;
+        margin-bottom: 2px;
+      }
+
+      /* Empty State */
+      .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        text-align: center;
+        color: rgba(245, 241, 234, 0.5);
+        font-size: 0.75rem;
+      }
+
+      .empty-state svg {
+        width: 48px;
+        height: 48px;
+        margin-bottom: 10px;
+        opacity: 0.3;
+      }
+
+      /* Status Indicator */
+      .status-indicator {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 4px;
+        animation: statusPulse 2s infinite;
+      }
+
+      .status-indicator.active {
+        background: var(--green);
+      }
+
+      .status-indicator.inactive {
+        background: var(--red);
+        animation: none;
+      }
+
+      @keyframes statusPulse {
+        0%, 100% {
+          opacity: 0.6;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1.2);
+        }
+      }
+
+      /* Responsive adjustments for very small screens */
+      @media (max-height: 480px) {
+        .app {
+          padding: 4px;
+          gap: 4px;
+        }
+
+        .header {
+          padding: 6px 10px;
+        }
+
+        .stat-card {
+          padding: 8px;
+        }
+
+        .results-section,
+        .actions-section {
+          padding: 10px;
+        }
+      }
+
+      /* Loading skeleton */
+      .skeleton {
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.1));
+        background-size: 200% 100%;
+        animation: loading 1.5s infinite;
+      }
+
+      @keyframes loading {
+        0% {
+          background-position: 200% 0;
+        }
+        100% {
+          background-position: -200% 0;
+        }
+      }
+
+      /* Landscape mode optimization */
+      @media (orientation: landscape) {
+        .app {
+          padding: 4px;
+          gap: 4px;
+        }
+
+        .stats-section {
+          grid-template-columns: repeat(4, 1fr);
+        }
+
+        .header-title {
+          font-size: 0.95rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <!-- Header -->
+      <div class="header">
+        <div>
+          <h1 class="header-title">MEDICAL TRICORDER</h1>
+          <div class="header-status">
+            <span class="status-indicator active"></span>SYSTEM ONLINE
+          </div>
+        </div>
+      </div>
+
+      <!-- Scrollable Content -->
+      <div class="content">
+        <!-- Live Stats -->
+        <div class="stats-section">
+          <div class="stat-card">
+            <div class="stat-label">Heart Rate</div>
+            <div class="stat-value" id="heartRate">-- </div>
+            <div class="stat-unit">bpm</div>
+            <div class="stat-bar">
+              <div class="stat-bar-fill" id="heartRateBar" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">Temperature</div>
+            <div class="stat-value" id="temperature">--</div>
+            <div class="stat-unit">°C</div>
+            <div class="stat-bar">
+              <div class="stat-bar-fill" id="temperatureBar" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">O2 Saturation</div>
+            <div class="stat-value" id="o2Sat">--</div>
+            <div class="stat-unit">%</div>
+            <div class="stat-bar">
+              <div class="stat-bar-fill" id="o2SatBar" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-label">Blood Pressure</div>
+            <div class="stat-value" id="bloodPressure">--</div>
+            <div class="stat-unit">mmHg</div>
+            <div class="stat-bar">
+              <div class="stat-bar-fill" id="bloodPressureBar" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Analyze Button -->
+        <button class="analyze-button" id="analyzeBtn">
+          ANALYZE PATIENT
+        </button>
+
+        <!-- Results Section -->
+        <div id="resultsContainer"></div>
+
+        <!-- Actions Section -->
+        <div id="actionsContainer"></div>
+      </div>
+    </div>
+
+    <script>
+      class MedicalTricorder {
+        constructor() {
+          this.isAnalyzing = false;
+          this.currentAnalysis = null;
+          this.stats = {
+            heartRate: 0,
+            temperature: 0,
+            o2Sat: 0,
+            bloodPressure: 0,
+          };
+          this.init();
+        }
+
+        init() {
+          document.getElementById("analyzeBtn").addEventListener("click", () => this.analyze());
+          this.generateMockStats();
+          this.startStatUpdates();
+        }
+
+        generateMockStats() {
+          // Generate realistic medical stats with some variation
+          this.stats.heartRate = Math.floor(60 + Math.random() * 40);
+          this.stats.temperature = (36.5 + Math.random() * 2).toFixed(1);
+          this.stats.o2Sat = Math.floor(95 + Math.random() * 5);
+          const systolic = Math.floor(110 + Math.random() * 30);
+          const diastolic = Math.floor(70 + Math.random() * 20);
+          this.stats.bloodPressure = `${systolic}/${diastolic}`;
+        }
+
+        updateStatsDisplay() {
+          document.getElementById("heartRate").textContent = this.stats.heartRate;
+          document.getElementById("heartRateBar").style.width = `${(this.stats.heartRate / 120) * 100}%`;
+
+          document.getElementById("temperature").textContent = this.stats.temperature;
+          document.getElementById("temperatureBar").style.width = `${((this.stats.temperature - 36) / 3) * 100}%`;
+
+          document.getElementById("o2Sat").textContent = this.stats.o2Sat;
+          document.getElementById("o2SatBar").style.width = `${this.stats.o2Sat}%`;
+
+          document.getElementById("bloodPressure").textContent = this.stats.bloodPressure;
+          const systolic = parseInt(this.stats.bloodPressure.split("/")[0]);
+          document.getElementById("bloodPressureBar").style.width = `${(systolic / 180) * 100}%`;
+        }
+
+        startStatUpdates() {
+          setInterval(() => {
+            this.generateMockStats();
+            this.updateStatsDisplay();
+          }, 3000);
+        }
+
+        async analyze() {
+          if (this.isAnalyzing) return;
+
+          this.isAnalyzing = true;
+          const btn = document.getElementById("analyzeBtn");
+          btn.classList.add("loading");
+          btn.disabled = true;
+
+          try {
+            // Call backend API for LLM analysis
+            const response = await fetch("/api/tricorder/analyze", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                stats: this.stats,
+                timestamp: new Date().toISOString(),
+              }),
+            });
+
+            if (!response.ok) throw new Error("Analysis failed");
+
+            const analysis = await response.json();
+            this.displayAnalysis(analysis);
+          } catch (error) {
+            console.error("Analysis error:", error);
+            this.displayAnalysis({
+              findings: [
+                {
+                  title: "System Error",
+                  description: "Unable to connect to analysis system. Using mock data.",
+                },
+              ],
+              recommendations: [
+                {
+                  action: "CHECK CONNECTION",
+                  description: "Verify network connectivity",
+                },
+              ],
+            });
+          } finally {
+            this.isAnalyzing = false;
+            btn.classList.remove("loading");
+            btn.disabled = false;
+          }
+        }
+
+        displayAnalysis(analysis) {
+          this.currentAnalysis = analysis;
+
+          // Display results
+          let resultsHtml = `
+            <div class="results-section">
+              <div class="results-title">Analysis Results</div>
+          `;
+
+          if (analysis.findings && analysis.findings.length > 0) {
+            analysis.findings.forEach((finding) => {
+              resultsHtml += `
+                <div class="analysis-result">
+                  <div class="analysis-text">
+                    <strong>${finding.title || "Finding"}</strong><br/>
+                    ${finding.description || ""}
+                  </div>
+                </div>
+              `;
+            });
+          } else {
+            resultsHtml += `
+              <div class="empty-state">
+                <div>No significant findings</div>
+              </div>
+            `;
+          }
+
+          resultsHtml += `</div>`;
+
+          // Display actions
+          let actionsHtml = `
+            <div class="actions-section">
+              <div class="actions-title">Recommended Actions</div>
+          `;
+
+          if (analysis.recommendations && analysis.recommendations.length > 0) {
+            analysis.recommendations.forEach((rec) => {
+              actionsHtml += `
+                <div class="action-item">
+                  <strong>${rec.action || "Action"}</strong>
+                  ${rec.description || ""}
+                </div>
+              `;
+            });
+          } else {
+            actionsHtml += `
+              <div class="action-item">
+                <strong>CONTINUE MONITORING</strong>
+                Patient vitals are stable
+              </div>
+            `;
+          }
+
+          actionsHtml += `</div>`;
+
+          // Update DOM
+          document.getElementById("resultsContainer").innerHTML = resultsHtml;
+          document.getElementById("actionsContainer").innerHTML = actionsHtml;
+
+          // Scroll to results
+          setTimeout(() => {
+            document.getElementById("resultsContainer").scrollIntoView({
+              behavior: "smooth",
+            });
+          }, 100);
+        }
+      }
+
+      // Initialize when DOM is ready
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => {
+          new MedicalTricorder();
+        });
+      } else {
+        new MedicalTricorder();
+      }
+    </script>
+  </body>
+</html>

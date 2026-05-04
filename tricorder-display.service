@@ -1,0 +1,23 @@
+[Unit]
+Description=Medical Tricorder Display (Kiosk Mode)
+After=network-online.target display-manager.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+ExecStart=/bin/bash -c 'sleep 5 && DISPLAY=:0 /usr/bin/chromium-browser --kiosk --no-sandbox --disable-gpu --disable-software-rasterizer --disable-dev-shm-usage --disable-extensions --disable-plugins --disable-suggestions-ui --disable-infobars --disable-breakpad --disable-web-resources --disable-client-side-phishing-detection --disable-popup-blocking --disable-prompt-on-repost --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-breakpad --disable-client-side-phishing-detection --disable-default-apps --disable-extensions --disable-features=InterestFeedContentSuggestions --disable-hang-monitor --disable-popup-blocking --disable-prompt-on-repost --disable-sync --disable-translate --enable-automation --enable-features=NetworkService --metrics-recording-only --mute-audio --no-default-browser-check --no-first-run --no-service-autorun "http://localhost:3000/tricorder-display.html"'
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/pi/.Xauthority"
+
+# Allow access to display and input
+ProtectSystem=partial
+ProtectHome=yes
+ReadWritePaths=/home/pi/.Xauthority /tmp/.X11-unix /run/user/1000
+
+[Install]
+WantedBy=graphical.target

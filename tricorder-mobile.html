@@ -1,0 +1,932 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Medical Tricorder" />
+    <title>Medical Tricorder</title>
+    <link rel="manifest" href="tricorder-manifest.json" />
+    <link rel="icon" type="image/png" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23000'/><text x='50%' y='50%' font-size='80' fill='%23f9911e' text-anchor='middle' dy='.3em'>⚕️</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #000000;
+        --orange: #f9911e;
+        --purple: #cc99ff;
+        --blue: #8899ff;
+        --red: #c83a3a;
+        --green: #7ef7b8;
+        --text: #f5f1ea;
+        --safe-top: max(12px, env(safe-area-inset-top));
+        --safe-bottom: max(12px, env(safe-area-inset-bottom));
+        --safe-left: max(12px, env(safe-area-inset-left));
+        --safe-right: max(12px, env(safe-area-inset-right));
+      }
+
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        min-height: 100svh;
+        height: 100%;
+        width: 100%;
+        background: var(--bg);
+        overflow: hidden;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      body {
+        font-family: "Antonio", sans-serif;
+        color: var(--text);
+        display: flex;
+        flex-direction: column;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+      }
+
+      .lcars-text {
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      /* Main container with safe areas */
+      .app {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        width: 100%;
+        padding-top: var(--safe-top);
+        padding-bottom: var(--safe-bottom);
+        padding-left: var(--safe-left);
+        padding-right: var(--safe-right);
+        gap: 8px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      /* Camera view (takes up most space) */
+      .camera-section {
+        flex: 1;
+        display: flex;
+        position: relative;
+        border-radius: 20px;
+        overflow: hidden;
+        border: 2px solid rgba(249, 145, 30, 0.4);
+        background: #000;
+        min-height: 0;
+      }
+
+      .camera-view {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      .camera-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 12px;
+        pointer-events: none;
+      }
+
+      .camera-overlay-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .camera-stat {
+        background: rgba(0, 0, 0, 0.6);
+        border: 1px solid rgba(249, 145, 30, 0.3);
+        padding: 6px 10px;
+        border-radius: 8px;
+        font-size: 0.7rem;
+        color: var(--orange);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .camera-overlay-bottom {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      /* Fullscreen floating button */
+      .fullscreen-btn {
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(245,241,234,0.08);
+        color: var(--text);
+        padding: 8px 12px;
+        border-radius: 10px;
+        font-size: 0.75rem;
+        cursor: pointer;
+        pointer-events: auto;
+      }
+
+      .floating-fullscreen-toggle {
+        position: absolute;
+        right: 12px;
+        top: 12px;
+        z-index: 800;
+      }
+
+      .camera-button {
+        background: rgba(249, 145, 30, 0.9);
+        border: none;
+        padding: 8px 14px;
+        border-radius: 12px;
+        color: #000;
+        font-family: "Antonio", sans-serif;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        cursor: pointer;
+        pointer-events: auto;
+        transition: all 0.15s ease;
+      }
+
+      .camera-button:active {
+        transform: scale(0.95);
+      }
+
+      /* Header */
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        background: linear-gradient(90deg, rgba(249, 145, 30, 0.12), transparent);
+        border-radius: 12px;
+        border: 1px solid rgba(249, 145, 30, 0.25);
+        flex-shrink: 0;
+      }
+
+      .header-title {
+        margin: 0;
+        font-size: 0.95rem;
+        color: var(--orange);
+        letter-spacing: 0.12em;
+      }
+
+      .status-indicator {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--green);
+        animation: statusPulse 2s infinite;
+        margin-right: 4px;
+      }
+
+      @keyframes statusPulse {
+        0%, 100% { opacity: 0.6; }
+        50% { opacity: 1; }
+      }
+
+      /* Controls bar */
+      .controls {
+        display: flex;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .btn {
+        flex: 1;
+        padding: 12px 16px;
+        background: linear-gradient(135deg, var(--orange), #ff6b35);
+        border: none;
+        border-radius: 10px;
+        color: #000;
+        font-family: "Antonio", sans-serif;
+        font-size: 0.85rem;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        touch-action: manipulation;
+      }
+
+      .btn:active {
+        transform: scale(0.98);
+      }
+
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: wait;
+      }
+
+      .btn.loading {
+        background: linear-gradient(135deg, var(--purple), var(--blue));
+        animation: pulse 1.5s infinite;
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 0.8; }
+        50% { opacity: 1; }
+      }
+
+      .btn-secondary {
+        background: rgba(136, 153, 255, 0.2);
+        border: 1px solid rgba(136, 153, 255, 0.5);
+        color: var(--blue);
+      }
+
+      /* Stats bar (fixed at bottom) */
+      .stats-bar {
+        display: flex;
+        gap: 8px;
+        flex-shrink: 0;
+        overflow-x: auto;
+        padding: 4px 0;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .stat-mini {
+        background: rgba(136, 153, 255, 0.15);
+        border: 1px solid rgba(136, 153, 255, 0.3);
+        border-radius: 8px;
+        padding: 8px 10px;
+        white-space: nowrap;
+        font-size: 0.7rem;
+        flex-shrink: 0;
+      }
+
+      .stat-mini-label {
+        color: var(--blue);
+        letter-spacing: 0.08em;
+        font-size: 0.65rem;
+        display: block;
+        margin-bottom: 2px;
+      }
+
+      .stat-mini-value {
+        color: var(--text);
+        font-size: 0.9rem;
+        font-weight: 600;
+      }
+
+      /* Modal for results */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.8);
+        display: none;
+        align-items: flex-end;
+        justify-content: center;
+        z-index: 1000;
+        padding: 0 var(--safe-left) var(--safe-bottom) var(--safe-right);
+      }
+
+      .modal-overlay.visible {
+        display: flex;
+      }
+
+      .modal {
+        background: var(--bg);
+        border: 2px solid var(--orange);
+        border-radius: 20px;
+        padding: 16px;
+        max-height: 70vh;
+        width: 100%;
+        max-width: 100%;
+        overflow-y: auto;
+        box-shadow: 0 -8px 32px rgba(249, 145, 30, 0.2);
+      }
+
+      .modal-title {
+        margin: 0 0 12px 0;
+        color: var(--orange);
+        font-size: 0.95rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .finding {
+        background: rgba(249, 145, 30, 0.08);
+        border-left: 3px solid var(--orange);
+        padding: 10px;
+        border-radius: 6px;
+        margin-bottom: 8px;
+        font-size: 0.8rem;
+        line-height: 1.4;
+      }
+
+      .finding strong {
+        color: var(--orange);
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      .action {
+        background: rgba(126, 247, 184, 0.08);
+        border-left: 3px solid var(--green);
+        padding: 10px;
+        border-radius: 6px;
+        margin-bottom: 8px;
+        font-size: 0.8rem;
+        line-height: 1.4;
+      }
+
+      .action strong {
+        color: var(--green);
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      .close-modal {
+        width: 100%;
+        margin-top: 12px;
+        padding: 10px;
+        background: rgba(200, 58, 58, 0.2);
+        border: 1px solid rgba(200, 58, 58, 0.4);
+        color: var(--red);
+        font-family: "Antonio", sans-serif;
+        font-size: 0.8rem;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      /* Error state */
+      .error {
+        color: var(--red);
+        background: rgba(200, 58, 58, 0.1);
+        border: 1px solid rgba(200, 58, 58, 0.3);
+        padding: 10px;
+        border-radius: 8px;
+        font-size: 0.8rem;
+        text-align: center;
+      }
+
+      /* Loading spinner */
+      .spinner {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(249, 145, 30, 0.3);
+        border-top-color: var(--orange);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      /* Camera permission request */
+      .permission-request {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        gap: 16px;
+        padding: 20px;
+        text-align: center;
+      }
+
+      .permission-request h2 {
+        margin: 0;
+        color: var(--orange);
+        font-size: 1.3rem;
+      }
+
+      .permission-request p {
+        margin: 0;
+        color: rgba(245, 241, 234, 0.7);
+        font-size: 0.9rem;
+      }
+
+      .permission-btn {
+        padding: 12px 24px;
+        background: var(--orange);
+        color: #000;
+        border: none;
+        border-radius: 10px;
+        font-family: "Antonio", sans-serif;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      /* Landscape adjustments */
+      @media (orientation: landscape) {
+        .app {
+          flex-direction: row;
+          gap: 12px;
+        }
+
+        .camera-section {
+          flex: 1;
+        }
+
+        .sidebar {
+          flex: 0 0 200px;
+          display: flex;
+          flex-direction: column;
+          overflow-y: auto;
+        }
+
+        .header {
+          display: none;
+        }
+
+        .controls {
+          flex-direction: column;
+        }
+
+        .stats-bar {
+          flex-direction: column;
+          overflow-y: auto;
+          overflow-x: hidden;
+        }
+      }
+
+      /* Safe area handling for notched devices */
+      @supports (padding: max(0px)) {
+        .app {
+          padding-left: max(8px, env(safe-area-inset-left));
+          padding-right: max(8px, env(safe-area-inset-right));
+          padding-top: max(8px, env(safe-area-inset-top));
+          padding-bottom: max(8px, env(safe-area-inset-bottom));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <!-- Header -->
+      <div class="header">
+        <div>
+          <h1 class="header-title">MEDICAL TRICORDER</h1>
+          <div style="font-size: 0.75rem; color: var(--blue); letter-spacing: 0.1em;">
+            <span class="status-indicator"></span>SYSTEM ONLINE
+          </div>
+        </div>
+      </div>
+
+      <!-- Camera Section -->
+      <div class="camera-section">
+        <video id="cameraFeed" class="camera-view" autoplay playsinline muted></video>
+        <div class="camera-overlay">
+          <div class="camera-overlay-top">
+            <div class="camera-stat" id="fpsCounter">FPS: 0</div>
+            <div class="camera-stat" id="cameraStatus">INITIALIZING</div>
+          </div>
+          <div class="camera-overlay-bottom">
+            <button class="camera-button" id="toggleCamera" onclick="toggleCamera()">FLIP</button>
+            <button class="camera-button" id="fullscreenToggle" onclick="toggleFullscreen()">FULL SCREEN</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats Bar -->
+      <div class="stats-bar" id="statsBar">
+        <div class="stat-mini">
+          <span class="stat-mini-label">Heart Rate</span>
+          <span class="stat-mini-value" id="hrMini">--</span>
+        </div>
+        <div class="stat-mini">
+          <span class="stat-mini-label">Temperature</span>
+          <span class="stat-mini-value" id="tempMini">--</span>
+        </div>
+        <div class="stat-mini">
+          <span class="stat-mini-label">O2 Sat</span>
+          <span class="stat-mini-value" id="o2Mini">--</span>
+        </div>
+        <div class="stat-mini">
+          <span class="stat-mini-label">Blood Pressure</span>
+          <span class="stat-mini-value" id="bpMini">--</span>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls">
+        <button class="btn" id="analyzeBtn" onclick="analyzeTricorder()">ANALYZE</button>
+        <button class="btn btn-secondary" id="settingsBtn" onclick="toggleSettings()">⚙️</button>
+      </div>
+    </div>
+
+    <div class="floating-fullscreen-toggle">
+      <button class="fullscreen-btn" id="floatingFsBtn" onclick="toggleFullscreen()">Enter Fullscreen</button>
+    </div>
+
+    <!-- Results Modal -->
+    <div class="modal-overlay" id="resultsModal">
+      <div class="modal">
+        <h2 class="modal-title">ANALYSIS RESULTS</h2>
+        <div id="resultsContent"></div>
+        <button class="close-modal" onclick="closeResults()">CLOSE</button>
+      </div>
+    </div>
+
+    <script>
+      class MobileTricorder {
+        constructor() {
+          this.videoTrack = null;
+          this.videoStream = null;
+          this.isAnalyzing = false;
+          this.stats = {
+            heartRate: 0,
+            temperature: 0,
+            o2Sat: 0,
+            bloodPressure: '0/0'
+          };
+          this.facingMode = 'environment'; // rear camera
+          this.frameCount = 0;
+          this.lastFpsTime = Date.now();
+          
+          this.init();
+        }
+
+        async init() {
+          // Request camera permissions
+          try {
+              // Require secure context (HTTPS) or localhost for camera access.
+              if (!isSecureContextAllowed()) {
+                this.showPermissionRequest('Camera access requires a secure context (HTTPS) or localhost.\n\nOptions:\n• Install the PWA (Add to Home Screen) and open from the home screen on iOS/Android if available.\n• Use an HTTPS tunnel like `ngrok http 3000` from your computer and open the generated HTTPS URL on your phone.');
+                return;
+              }
+
+              // Try preferred constraints with facingMode first.
+              try {
+                this.videoStream = await navigator.mediaDevices.getUserMedia({
+                  video: {
+                    facingMode: this.facingMode,
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                  },
+                  audio: false
+                });
+              } catch (err) {
+                // Fallback to a more permissive request if facingMode fails on some devices/browsers
+                try {
+                  this.videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                } catch (err2) {
+                  throw err2;
+                }
+              }
+
+            const video = document.getElementById('cameraFeed');
+            video.srcObject = this.videoStream;
+            this.videoTrack = this.videoStream.getVideoTracks()[0];
+
+            document.getElementById('cameraStatus').textContent = 'CAMERA READY';
+            
+            this.startStatUpdates();
+            this.startFpsCounter();
+            
+            // Register service worker for PWA
+            if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.register('tricorder-sw.js').catch(() => {});
+            }
+          } catch (error) {
+            console.error('Camera error:', error);
+              document.getElementById('cameraStatus').textContent = 'NO CAMERA';
+              // If insecure context, provide specific guidance
+              if (!isSecureContextAllowed()) {
+                this.showPermissionRequest('Your phone is accessing the app over an insecure HTTP connection. Browsers block camera access on non-secure origins.\n\nRecommended: run `ngrok http 3000` on your computer, then open the provided https:// URL on your phone.');
+              } else {
+                this.showPermissionRequest();
+              }
+          }
+        }
+
+        showPermissionRequest() {
+          const cameraSection = document.querySelector('.camera-section');
+          const message = arguments[0] || '';
+          const certCmd = `./generate-self-signed.sh YOUR_LAN_IP\nUSE_HTTPS=1 node server.js`;
+          cameraSection.innerHTML = `
+            <div class="permission-request">
+              <h2>Camera Permission Required</h2>
+              <p>This app needs access to your camera to function as a medical tricorder.</p>
+              ${message ? `<div style="text-align:left; font-size:0.85rem; margin-top:8px; white-space:pre-wrap;">${escapeHtml(message)}</div>` : ''}
+              <div style="display:flex; gap:8px; margin-top:12px;">
+                <button class="permission-btn" onclick="location.reload()">Try Again</button>
+                <button class="permission-btn" onclick="copyCertCmd()">Copy HTTPS Setup</button>
+              </div>
+              <div style="margin-top:8px; font-size:0.8rem; color:rgba(245,241,234,0.7);">Tip: run the copied commands on your computer, then open the HTTPS URL (https://YOUR_COMPUTER_IP:3000) on your phone and accept the self-signed certificate.</div>
+            </div>
+          `;
+        }
+
+        
+        
+
+        generateMockStats() {
+          this.stats.heartRate = Math.floor(60 + Math.random() * 40);
+          this.stats.temperature = (36.5 + Math.random() * 2).toFixed(1);
+          this.stats.o2Sat = Math.floor(95 + Math.random() * 5);
+          const systolic = Math.floor(110 + Math.random() * 30);
+          const diastolic = Math.floor(70 + Math.random() * 20);
+          this.stats.bloodPressure = `${systolic}/${diastolic}`;
+        }
+
+        updateStatsDisplay() {
+          document.getElementById('hrMini').textContent = this.stats.heartRate;
+          document.getElementById('tempMini').textContent = this.stats.temperature;
+          document.getElementById('o2Mini').textContent = this.stats.o2Sat;
+          document.getElementById('bpMini').textContent = this.stats.bloodPressure;
+        }
+
+        startStatUpdates() {
+          this.generateMockStats();
+          this.updateStatsDisplay();
+          
+          setInterval(() => {
+            this.generateMockStats();
+            this.updateStatsDisplay();
+          }, 3000);
+        }
+
+        startFpsCounter() {
+          setInterval(() => {
+            const now = Date.now();
+            const delta = now - this.lastFpsTime;
+            if (delta >= 1000) {
+              const fps = Math.round((this.frameCount * 1000) / delta);
+              document.getElementById('fpsCounter').textContent = `FPS: ${fps}`;
+              this.frameCount = 0;
+              this.lastFpsTime = now;
+            }
+            this.frameCount++;
+          }, 30);
+        }
+
+        async toggleCamera() {
+          try {
+            this.facingMode = this.facingMode === 'environment' ? 'user' : 'environment';
+            if (this.videoStream) {
+              this.videoStream.getTracks().forEach(track => track.stop());
+            }
+            
+            const video = document.getElementById('cameraFeed');
+            this.videoStream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                facingMode: this.facingMode,
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+              },
+              audio: false
+            });
+            
+            video.srcObject = this.videoStream;
+          } catch (error) {
+            console.error('Camera switch error:', error);
+          }
+        }
+
+        async analyze() {
+          if (this.isAnalyzing) return;
+
+          this.isAnalyzing = true;
+          const btn = document.getElementById('analyzeBtn');
+          btn.classList.add('loading');
+          btn.disabled = true;
+
+          try {
+            // Get the server URL (could be configured)
+            const serverUrl = window.location.hostname === 'localhost' 
+              ? 'http://localhost:3000'
+              : window.location.origin;
+
+            const response = await fetch(`${serverUrl}/api/tricorder/analyze`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                stats: this.stats,
+                timestamp: new Date().toISOString(),
+              }),
+            });
+
+            if (!response.ok) throw new Error('Analysis failed');
+
+            const analysis = await response.json();
+            this.displayResults(analysis);
+          } catch (error) {
+            console.error('Analysis error:', error);
+            this.displayResults({
+              findings: [
+                {
+                  title: 'Connection Error',
+                  description: 'Unable to reach analysis server. Check network connection.',
+                },
+              ],
+              recommendations: [
+                {
+                  action: 'RECONNECT',
+                  description: 'Verify WiFi connection and server status.',
+                },
+              ],
+            });
+          } finally {
+            this.isAnalyzing = false;
+            btn.classList.remove('loading');
+            btn.disabled = false;
+          }
+        }
+
+        displayResults(analysis) {
+          let html = '';
+
+          if (analysis.findings && analysis.findings.length > 0) {
+            html += '<div style="margin-bottom: 12px;">';
+            analysis.findings.forEach((finding) => {
+              html += `
+                <div class="finding">
+                  <strong>${finding.title || 'Finding'}</strong>
+                  ${finding.description || ''}
+                </div>
+              `;
+            });
+            html += '</div>';
+          }
+
+          if (analysis.recommendations && analysis.recommendations.length > 0) {
+            analysis.recommendations.forEach((rec) => {
+              html += `
+                <div class="action">
+                  <strong>${rec.action || 'Action'}</strong>
+                  ${rec.description || ''}
+                </div>
+              `;
+            });
+          }
+
+          if (!html) {
+            html = '<div class="error">No analysis available</div>';
+          }
+
+          document.getElementById('resultsContent').innerHTML = html;
+          document.getElementById('resultsModal').classList.add('visible');
+        }
+      }
+
+      // Global functions
+      let tricorder = null;
+
+      function isSecureContextAllowed() {
+        try {
+          const host = window.location.hostname;
+          const proto = window.location.protocol;
+          if (proto === 'https:' || host === 'localhost' || host === '127.0.0.1') return true;
+          return false;
+        } catch (e) {
+          return false;
+        }
+      }
+
+      function escapeHtml(str) {
+        return String(str).replace(/[&<>"'`]/g, (s) => ({
+          '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;','`':'&#96;'
+        }[s]));
+      }
+
+      function copyNgrok() {
+        const cmd = 'ngrok http 3000';
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(cmd).then(() => {
+            alert('Copied ngrok command to clipboard. Run it in your terminal and open the provided HTTPS URL on your phone.');
+          }).catch(() => {
+            prompt('Copy this command and run it on your computer:', cmd);
+          });
+        } else {
+          prompt('Copy this command and run it on your computer:', cmd);
+        }
+      }
+
+      function copyCertCmd() {
+        const cmd = './generate-self-signed.sh YOUR_LAN_IP\nUSE_HTTPS=1 node server.js';
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(cmd).then(() => {
+            alert('Copied HTTPS setup commands to clipboard. Run them on your computer to generate certs and start the server with HTTPS.');
+          }).catch(() => {
+            prompt('Copy these commands and run them on your computer:', cmd);
+          });
+        } else {
+          prompt('Copy these commands and run them on your computer:', cmd);
+        }
+      }
+
+      function toggleCamera() {
+        if (tricorder) {
+          tricorder.toggleCamera();
+        }
+      }
+
+      function analyzeTricorder() {
+        // Try to enter fullscreen as part of this user gesture
+        if (document.fullscreenEnabled) {
+          enterFullscreen().catch(() => {});
+        }
+
+        if (tricorder) {
+          tricorder.analyze();
+        }
+      }
+
+      // Fullscreen helpers
+      async function enterFullscreen() {
+        const el = document.documentElement;
+        if (el.requestFullscreen) return el.requestFullscreen();
+        if (el.webkitRequestFullscreen) return el.webkitRequestFullscreen();
+        if (el.msRequestFullscreen) return el.msRequestFullscreen();
+        return Promise.reject(new Error('Fullscreen not supported'));
+      }
+
+      async function exitFullscreen() {
+        if (document.exitFullscreen) return document.exitFullscreen();
+        if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
+        if (document.msExitFullscreen) return document.msExitFullscreen();
+        return Promise.reject(new Error('Exit fullscreen not supported'));
+      }
+
+      function isFullscreenActive() {
+        return !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+      }
+
+      function toggleFullscreen() {
+        if (isFullscreenActive()) {
+          exitFullscreen().catch(() => {});
+        } else {
+          enterFullscreen().catch(() => {});
+        }
+      }
+
+      function updateFullscreenButtons() {
+        const label = isFullscreenActive() ? 'Exit Fullscreen' : 'Enter Fullscreen';
+        const btn = document.getElementById('floatingFsBtn');
+        const small = document.getElementById('fullscreenToggle');
+        if (btn) btn.textContent = label;
+        if (small) small.textContent = isFullscreenActive() ? 'EXIT' : 'FULL SCREEN';
+      }
+
+      document.addEventListener('fullscreenchange', updateFullscreenButtons);
+      document.addEventListener('webkitfullscreenchange', updateFullscreenButtons);
+      document.addEventListener('msfullscreenchange', updateFullscreenButtons);
+
+      // Hide floating fullscreen control if running as installed PWA or in standalone iOS mode
+      function updateFloatingFsVisibility() {
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        const container = document.querySelector('.floating-fullscreen-toggle');
+        if (container) container.style.display = isStandalone ? 'none' : 'block';
+      }
+
+      // Run at init
+      window.addEventListener('load', () => {
+        updateFullscreenButtons();
+        updateFloatingFsVisibility();
+      });
+
+      function closeResults() {
+        document.getElementById('resultsModal').classList.remove('visible');
+      }
+
+      function toggleSettings() {
+        alert('Settings: Configure server URL and preferences here');
+      }
+
+      // Initialize on load
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+          tricorder = new MobileTricorder();
+        });
+      } else {
+        tricorder = new MobileTricorder();
+      }
+
+      // Keep screen on
+      if ('wakeLock' in navigator) {
+        navigator.wakeLock.request('screen').catch(() => {});
+      }
+
+      // Install button
+      let deferredPrompt;
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+      });
+    </script>
+  </body>
+</html>

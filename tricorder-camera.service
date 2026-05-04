@@ -1,0 +1,23 @@
+[Unit]
+Description=Medical Tricorder Camera Stream
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/workspace-manager
+ExecStart=/usr/bin/python3 tricorder_camera_stream.py --host 0.0.0.0 --port 8080 --camera 0 --width 640 --height 480 --fps 30
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/home/pi/workspace-manager
+
+[Install]
+WantedBy=multi-user.target
