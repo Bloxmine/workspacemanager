@@ -261,6 +261,15 @@
         inset: 0;
       }
 
+      .detector-overlay-canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 1;
+      }
+
       .camera-overlay {
         position: absolute;
         inset: 0;
@@ -286,6 +295,13 @@
         color: var(--orange);
         font-size: 0.76rem;
         letter-spacing: 0.12em;
+      }
+
+      .detector-debug-chip {
+        max-width: 72%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .voice-chip {
@@ -713,6 +729,7 @@
                 <div class="camera-card-inner">
                   <div class="camera-face front">
                     <video id="cameraFeed" class="camera-feed camera-front" autoplay muted playsinline></video>
+                    <canvas id="detectorOverlay" class="detector-overlay-canvas" aria-hidden="true"></canvas>
                     <div class="camera-overlay">
                       <div class="camera-overlay-top">
                         <span class="camera-chip lcars-text">Live Feed</span>
@@ -727,6 +744,7 @@
                         <span class="camera-chip lcars-text">Tap to Flip</span>
                       </div>
                       <div class="camera-overlay-bottom">
+                        <span id="detectorDebugChip" class="camera-chip detector-debug-chip lcars-text">Detector idle</span>
                         <span class="camera-hint lcars-text">Flip for medical telemetry</span>
                       </div>
                     </div>
@@ -838,6 +856,8 @@
       const voiceStatusChip = document.getElementById("voiceStatusChip");
       const voiceStatusLabel = voiceStatusChip.querySelector(".voice-label");
       const replayVoiceBtn = document.getElementById("replayVoiceBtn");
+      const detectorOverlay = document.getElementById("detectorOverlay");
+      const detectorDebugChip = document.getElementById("detectorDebugChip");
       const captureCanvas = document.createElement("canvas");
       const speakAudio = new Audio();
       const apiBase = `${window.location.protocol}//${window.location.hostname}:3000`;
@@ -847,6 +867,33 @@
       let cameraFlipped = false;
       let lastSpokenAudioUrl = "";
       let lastAnalysisPayload = null;
+      let poseLandmarker = null;
+      let faceDetector = null;
+      let mediaPipeReady = false;
+      let mediaPipeDetecting = false;
+      let detectionTimer = null;
+      let previousLandmarks = null;
+      let previousLandmarkTimeMs = 0;
+      let lastMovementAtMs = Date.now();
+      let tooCloseStreak = 0;
+      let isAudioPlaying = false;
+      let voicePlaybackUnlocked = false;
+      const audioQueue = [];
+      const AUDIO_UNLOCK_MESSAGE = "Tap once to enable voice alerts";
+      const voiceCooldownMs = 30000;
+      let lastPoseAlertAt = 0;
+      const poseAlertLastAt = new Map();
+      const detectorOverlayCtx = detectorOverlay.getContext("2d");
+
+      function markVoicePlaybackUnlocked() {
+        voicePlaybackUnlocked = true;
+        if (!isAudioPlaying && audioQueue.length > 0) {
+          processAudioQueue();
+        }
+      }
+      // for autoplay restrictions
+      document.addEventListener("pointerdown", markVoicePlaybackUnlocked, { once: true });
+      document.addEventListener("keydown", markVoicePlaybackUnlocked, { once: true });
 
       function clamp(value, min, max) {
         return Math.max(min, Math.min(max, value));
@@ -855,7 +902,7 @@
       function formatPercent(value) {
         return `${Math.round(value)}%`;
       }
-
+      // this is just some fake data.
       function updateTelemetry() {
         const now = new Date();
         const minutes = now.getMinutes();
@@ -881,6 +928,7 @@
         telemetryTime.textContent = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       }
 
+      // camera flip logic
       function setCameraFlip(nextState) {
         cameraFlipped = typeof nextState === "boolean" ? nextState : !cameraFlipped;
         cameraCard.classList.toggle("flipped", cameraFlipped);
@@ -889,6 +937,7 @@
         }
       }
 
+      // allow clicking or pressing enter/space on the camera card to flip it
       cameraCard.addEventListener("click", () => setCameraFlip());
       cameraCard.addEventListener("keydown", event => {
         if (event.key === "Enter" || event.key === " ") {
@@ -897,6 +946,7 @@
         }
       });
 
+      // simulate telemetry updates every second
       updateTelemetry();
       setInterval(updateTelemetry, 1000);
 
@@ -908,7 +958,7 @@
           .replace(/\"/g, "&quot;")
           .replace(/'/g, "&#39;");
       }
-
+      // these are the action icons
       function actionIcon(action) {
         const domain = (action.domain || (action.entity_id || action.entityId || "").split(".")[0] || "").toLowerCase();
         const service = String(action.service || "").toLowerCase();
@@ -941,6 +991,267 @@
         voiceStatusLabel.textContent = text || (state === "generating" ? "Generating voice" : "Playing voice");
       }
 
+      function maybeSpeakPoseKey(key) {
+        if (!key || !window.workspaceVoice?.speakPoseAlert) {
+          return;
+        }
+
+        const now = Date.now();
+        if (now - lastPoseAlertAt < voiceCooldownMs) {
+          return;
+        }
+
+        lastPoseAlertAt = now;
+        window.workspaceVoice.speakPoseAlert(key).catch(error => {
+          console.error("Pose alert speak failed:", error);
+        });
+      }
+
+      function pickPoseAlerts(landmarks, timestampMs) {
+        if (!Array.isArray(landmarks) || landmarks.length < 25) {
+          return { alerts: ["inactive"], metrics: { noseDepth: null } };
+        }
+
+        const nose = landmarks[0];
+        const leftShoulder = landmarks[11];
+        const rightShoulder = landmarks[12];
+        const leftHip = landmarks[23];
+        const rightHip = landmarks[24];
+
+        if (!nose || !leftShoulder || !rightShoulder || !leftHip || !rightHip) {
+          return { alerts: [], metrics: { noseDepth: null } };
+        }
+
+        const shoulderMid = {
+          x: (leftShoulder.x + rightShoulder.x) / 2,
+          y: (leftShoulder.y + rightShoulder.y) / 2,
+          z: (leftShoulder.z + rightShoulder.z) / 2,
+        };
+        const hipMid = {
+          x: (leftHip.x + rightHip.x) / 2,
+          y: (leftHip.y + rightHip.y) / 2,
+        };
+
+        const torsoHeight = Math.max(0.001, Math.abs(hipMid.y - shoulderMid.y));
+        const shoulderTilt = leftShoulder.y - rightShoulder.y;
+        const alerts = [];
+
+        if (nose.y > shoulderMid.y + torsoHeight * 0.2) {
+          alerts.push("head_down");
+        }
+
+        if (nose.z < shoulderMid.z - 1.2) {
+          alerts.push("too_close_to_screen");
+        }
+
+        if (Math.abs(shoulderTilt) > 0.05) {
+          alerts.push(shoulderTilt > 0 ? "tilting_left" : "tilting_right");
+        }
+
+        if (nose.y > shoulderMid.y + torsoHeight * 0.08 && shoulderMid.y > 0.45) {
+          alerts.push("slouching");
+        }
+
+        if (previousLandmarks && previousLandmarks[0]) {
+          const dt = Math.max(1, timestampMs - previousLandmarkTimeMs);
+          const points = [0, 11, 12, 15, 16, 23, 24];
+          let totalDelta = 0;
+
+          for (const index of points) {
+            const prev = previousLandmarks[index];
+            const cur = landmarks[index];
+            if (!prev || !cur) {
+              continue;
+            }
+
+            totalDelta += Math.hypot((cur.x - prev.x), (cur.y - prev.y));
+          }
+
+          const movementScore = totalDelta / points.length;
+          if (movementScore > 0.02) {
+            lastMovementAtMs = timestampMs;
+            if (movementScore > 0.05) {
+              alerts.push("very_active");
+            } else {
+              alerts.push("fidgeting");
+            }
+          }
+        }
+
+        if (timestampMs - lastMovementAtMs > 12000) {
+          alerts.push("inactive");
+        }
+
+        previousLandmarks = landmarks;
+        previousLandmarkTimeMs = timestampMs;
+
+        return {
+          alerts,
+          metrics: {
+            noseDepth: Number((nose.z - shoulderMid.z).toFixed(3)),
+          },
+        };
+      }
+
+      function pickFaceAlerts(faceResult) {
+        const detections = faceResult?.detections || [];
+        if (detections.length === 0 || !cameraFeed.videoWidth) {
+          return { alerts: [], faceRatio: 0 };
+        }
+
+        const face = detections[0];
+        const box = face.boundingBox || {};
+        const width = box.width || box.width_px || 0;
+        const faceRatio = width / cameraFeed.videoWidth;
+        const alerts = [];
+
+        if (faceRatio > 0.56) {
+          alerts.push("too_close_to_screen");
+        }
+
+        return { alerts, faceRatio };
+      }
+
+      function drawDetectorOverlay(poseLandmarks, faceResult) {
+        if (!detectorOverlayCtx || !cameraFeed.videoWidth || !cameraFeed.videoHeight) {
+          return;
+        }
+
+        const w = cameraFeed.videoWidth;
+        const h = cameraFeed.videoHeight;
+        detectorOverlay.width = w;
+        detectorOverlay.height = h;
+        detectorOverlayCtx.clearRect(0, 0, w, h);
+
+        if (Array.isArray(poseLandmarks)) {
+          detectorOverlayCtx.fillStyle = "rgba(126, 247, 184, 0.9)";
+          for (const point of poseLandmarks) {
+            if (!point) {
+              continue;
+            }
+            const x = point.x * w;
+            const y = point.y * h;
+            detectorOverlayCtx.beginPath();
+            detectorOverlayCtx.arc(x, y, 3, 0, Math.PI * 2);
+            detectorOverlayCtx.fill();
+          }
+        }
+
+        const face = faceResult?.detections?.[0];
+        if (face?.boundingBox) {
+          const box = face.boundingBox;
+          const bx = box.originX ?? box.origin_x ?? 0;
+          const by = box.originY ?? box.origin_y ?? 0;
+          const bw = box.width ?? 0;
+          const bh = box.height ?? 0;
+
+          detectorOverlayCtx.strokeStyle = "rgba(249, 145, 30, 0.95)";
+          detectorOverlayCtx.lineWidth = 2;
+          detectorOverlayCtx.strokeRect(bx, by, bw, bh);
+
+          const keypoints = face.keypoints || [];
+          detectorOverlayCtx.fillStyle = "rgba(255, 216, 74, 0.95)";
+          for (const point of keypoints) {
+            const x = (point.x || 0) * w;
+            const y = (point.y || 0) * h;
+            detectorOverlayCtx.beginPath();
+            detectorOverlayCtx.arc(x, y, 2.5, 0, Math.PI * 2);
+            detectorOverlayCtx.fill();
+          }
+        }
+      }
+
+      async function detectRealtimePoseAndFace() {
+        if (!mediaPipeReady || mediaPipeDetecting || !cameraFeed.srcObject || cameraFeed.readyState < 2) {
+          return;
+        }
+
+        mediaPipeDetecting = true;
+
+        try {
+          const timestampMs = performance.now();
+          const poseResult = poseLandmarker.detectForVideo(cameraFeed, timestampMs);
+          const faceResult = faceDetector.detectForVideo(cameraFeed, timestampMs);
+
+          const poseLandmarks = poseResult?.landmarks?.[0] || null;
+          const poseOutput = pickPoseAlerts(poseLandmarks, Date.now());
+          const faceOutput = pickFaceAlerts(faceResult);
+          const uniqueAlerts = [...new Set([...(poseOutput.alerts || []), ...(faceOutput.alerts || [])])];
+
+          drawDetectorOverlay(poseLandmarks, faceResult);
+
+          if (detectorDebugChip) {
+            const ratioText = faceOutput.faceRatio ? faceOutput.faceRatio.toFixed(2) : "0.00";
+            const depthText = poseOutput.metrics?.noseDepth != null ? poseOutput.metrics.noseDepth.toFixed(3) : "n/a";
+            detectorDebugChip.textContent = `face:${ratioText} depth:${depthText} alerts:${uniqueAlerts.join("|") || "none"}`;
+          }
+
+          if (uniqueAlerts.includes("too_close_to_screen")) {
+            tooCloseStreak += 1;
+          } else {
+            tooCloseStreak = Math.max(0, tooCloseStreak - 1);
+          }
+
+          if (uniqueAlerts.includes("slouching")) {
+            maybeSpeakPoseKey("slouching");
+          } else if (tooCloseStreak >= 3 && uniqueAlerts.includes("too_close_to_screen")) {
+            maybeSpeakPoseKey("too_close_to_screen");
+          } else if (uniqueAlerts.includes("head_down")) {
+            maybeSpeakPoseKey("head_down");
+          } else if (uniqueAlerts.includes("very_active")) {
+            maybeSpeakPoseKey("very_active");
+          } else if (uniqueAlerts.includes("fidgeting")) {
+            maybeSpeakPoseKey("fidgeting");
+          } else if (uniqueAlerts.includes("inactive")) {
+            maybeSpeakPoseKey("inactive");
+          }
+        } catch (error) {
+          console.error("Realtime detection error:", error);
+        } finally {
+          mediaPipeDetecting = false;
+        }
+      }
+
+      async function initMediaPipeDetectors() {
+        if (mediaPipeReady) {
+          return;
+        }
+
+        try {
+          const visionTasks = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/+esm");
+          const vision = await visionTasks.FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+          );
+
+          poseLandmarker = await visionTasks.PoseLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
+            },
+            runningMode: "VIDEO",
+            numPoses: 1,
+            minPoseDetectionConfidence: 0.55,
+            minPosePresenceConfidence: 0.55,
+            minTrackingConfidence: 0.55,
+          });
+
+          faceDetector = await visionTasks.FaceDetector.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite",
+            },
+            runningMode: "VIDEO",
+            minDetectionConfidence: 0.55,
+          });
+
+          mediaPipeReady = true;
+          if (!detectionTimer) {
+            detectionTimer = setInterval(detectRealtimePoseAndFace, 350);
+          }
+          console.log("MediaPipe realtime pose/face detection initialized.");
+        } catch (error) {
+          console.error("Failed to initialize MediaPipe detectors:", error);
+        }
+      }
+
       function buildSpeechText(analysis) {
         const assessment = analysis.assessment || "";
         const suggestions = Array.isArray(analysis.suggestions) ? analysis.suggestions : [];
@@ -962,19 +1273,103 @@
         return speechText.trim();
       }
 
+      function playQueuedAudio(url) {
+        return new Promise(resolve => {
+          if (!voicePlaybackUnlocked) {
+            resolve({ blocked: true });
+            return;
+          }
+
+          let settled = false;
+          let timeoutId = null;
+
+          const cleanup = () => {
+            speakAudio.onended = null;
+            speakAudio.onerror = null;
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+            }
+          };
+
+          const done = () => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            cleanup();
+            resolve({ blocked: false });
+          };
+
+          speakAudio.onended = done;
+          speakAudio.onerror = done;
+
+          // Safety net: never let a stuck media element block the queue forever.
+          timeoutId = setTimeout(done, 20000);
+
+          speakAudio.src = url;
+          speakAudio.currentTime = 0;
+
+          speakAudio.play().catch(error => {
+            console.error("Queued audio play() failed:", error);
+            if (error?.name === "NotAllowedError") {
+              voicePlaybackUnlocked = false;
+              resolve({ blocked: true });
+              return;
+            }
+            done();
+          });
+        });
+      }
+
+      async function processAudioQueue() {
+        if (isAudioPlaying) {
+          return;
+        }
+
+        isAudioPlaying = true;
+        replayVoiceBtn.disabled = true;
+
+        try {
+          while (audioQueue.length > 0) {
+            const next = audioQueue.shift();
+            if (!next?.url) {
+              continue;
+            }
+
+            setVoiceStatus("playing", next.statusText || "Playing voice");
+            const playback = await playQueuedAudio(next.url);
+            if (playback?.blocked) {
+              audioQueue.unshift(next);
+              setVoiceStatus("idle", AUDIO_UNLOCK_MESSAGE);
+              break;
+            }
+          }
+        } finally {
+          isAudioPlaying = false;
+          replayVoiceBtn.disabled = !lastSpokenAudioUrl;
+          if (audioQueue.length === 0) {
+            setVoiceStatus("idle", "Voice complete");
+          }
+        }
+      }
+
+      async function enqueueAudioPlayback(url, statusText) {
+        if (!url) {
+          return;
+        }
+
+        audioQueue.push({ url, statusText });
+        processAudioQueue();
+      }
+
       async function playAudioFromPath(audioPath, statusText = "Playing voice") {
         if (!audioPath) {
           return;
         }
 
         lastSpokenAudioUrl = `${apiBase}${audioPath}`;
-        replayVoiceBtn.disabled = false;
-        speakAudio.pause();
-        speakAudio.src = lastSpokenAudioUrl;
-        speakAudio.currentTime = 0;
-        setVoiceStatus("playing", statusText);
-        await speakAudio.play();
-        speakAudio.onended = () => setVoiceStatus("idle", "Voice complete");
+        replayVoiceBtn.disabled = true;
+        await enqueueAudioPlayback(lastSpokenAudioUrl, statusText);
       }
 
       async function speakAnalysis(analysis) {
@@ -1089,16 +1484,7 @@
         }
 
         try {
-          replayVoiceBtn.disabled = true;
-          setVoiceStatus("playing", "Playing voice");
-          speakAudio.pause();
-          speakAudio.src = lastSpokenAudioUrl;
-          speakAudio.currentTime = 0;
-          await speakAudio.play();
-          speakAudio.onended = () => {
-            setVoiceStatus("idle", "Voice complete");
-            replayVoiceBtn.disabled = false;
-          };
+          await enqueueAudioPlayback(lastSpokenAudioUrl, "Replay voice");
         } catch (error) {
           console.error("Voice replay failed:", error);
           setVoiceStatus("idle", "Voice error");
@@ -1119,6 +1505,7 @@
           });
           cameraFeed.srcObject = stream;
           cameraStatus.textContent = "Camera online.";
+          initMediaPipeDetectors();
         } catch (error) {
           cameraStatus.textContent = "Camera unavailable or permission denied.";
         }

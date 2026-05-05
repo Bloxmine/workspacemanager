@@ -1,6 +1,7 @@
+![Header](titleimage.jpg)
 # Workspace Manager
 
-Workspace Manager is a local Node.js app for monitoring a workspace, analyzing camera/state data with an LLM, sending Home Assistant service calls, and generating speech output for UI feedback.
+An LCARS inspired workspace manager. Similar to the ship's computer on the Enterprise, this tells you if you're slouching, active or been starting at the screen for too long.
 
 ## What It Does
 
@@ -14,6 +15,7 @@ Workspace Manager is a local Node.js app for monitoring a workspace, analyzing c
 
 - `server.js` - Express server and API routes
 - `index.html` - Main workspace manager UI
+*below are some test files *
 - `tricorder-display.html` - Tricorder analysis demo UI
 - `tricorder-mobile.html` - Mobile-friendly tricorder UI
 - `tricorder_camera_stream.py` - Camera stream helper for tricorder features
@@ -22,10 +24,10 @@ Workspace Manager is a local Node.js app for monitoring a workspace, analyzing c
 
 ## Requirements
 
-- Node.js 18 or newer
 - npm
-- A running Home Assistant instance
+- A running Home Assistant instance (although this currently is not usable by users with different set ups than mine)
 - A local LLM server such as LM Studio
+- An LLM *without* thinking capabilites or with thinking turned off. This would mess with the output!
 - Python environment for TTS generation if you want speech output
 
 ## Setup

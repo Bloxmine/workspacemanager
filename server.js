@@ -1,5 +1,5 @@
 // Author: Hein Dijstelbloem
-// Date: 2026-04-10
+// Date: 2026-05-05
 // Description: Workspace Manager API for Home Assistant service calls, workspace analysis, and TTS playback.
 
 const express = require('express');
@@ -30,7 +30,7 @@ const TTS_CONFIG = {
     referenceDir: path.join(__dirname, 'audio/references'),
     maxAudioFiles: 20
 };
-
+// these are hardcoded phrases for posture alerts.
 const POSE_ALERT_PHRASES = [
     { key: 'slouching', text: "You're slouching. Straighten your back." },
     { key: 'very_active', text: "You're very active right now. Keep your movement controlled." },
@@ -61,7 +61,7 @@ const SUGGESTION_PHRASES = [
 // path to reference audio
 const TTS_REFERENCE_AUDIO = path.join(TTS_CONFIG.referenceDir, 'voicesample.wav');
 const TTS_REFERENCE_TEXT = 'Please do not adress this unit in that matter';
-
+// this is code from TTS
 function resolveTtsPythonPath() {
     const candidates = [
         process.env.PYTHON_BIN,
@@ -82,7 +82,7 @@ function resolveTtsPythonPath() {
 
     return null;
 }
-
+// fs logic
 function getLatestWavByPrefix(filePrefix) {
     const matches = fs.readdirSync(TTS_CONFIG.outputDir)
         .filter(file => file.toLowerCase().endsWith('.wav') && file.startsWith(filePrefix))
