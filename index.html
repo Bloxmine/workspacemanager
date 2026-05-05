@@ -962,6 +962,21 @@
         return speechText.trim();
       }
 
+      async function playAudioFromPath(audioPath, statusText = "Playing voice") {
+        if (!audioPath) {
+          return;
+        }
+
+        lastSpokenAudioUrl = `${apiBase}${audioPath}`;
+        replayVoiceBtn.disabled = false;
+        speakAudio.pause();
+        speakAudio.src = lastSpokenAudioUrl;
+        speakAudio.currentTime = 0;
+        setVoiceStatus("playing", statusText);
+        await speakAudio.play();
+        speakAudio.onended = () => setVoiceStatus("idle", "Voice complete");
+      }
+
       async function speakAnalysis(analysis) {
         lastAnalysisPayload = analysis;
         const speechText = buildSpeechText(analysis);
@@ -986,19 +1001,86 @@
 
           const data = await response.json();
           if (data.audioPath) {
-            lastSpokenAudioUrl = `${apiBase}${data.audioPath}`;
-            replayVoiceBtn.disabled = false;
-            speakAudio.pause();
-            speakAudio.src = lastSpokenAudioUrl;
-            speakAudio.currentTime = 0;
-            setVoiceStatus("playing", "Playing voice");
-            await speakAudio.play();
-            speakAudio.onended = () => setVoiceStatus("idle", "Voice complete");
+            await playAudioFromPath(data.audioPath);
           }
         } catch (error) {
           console.error("TTS playback failed:", error);
           setVoiceStatus("idle", "Voice error");
         }
+      }
+
+      async function speakPoseAlertByKey(key) {
+        if (!key) {
+          return;
+        }
+
+        try {
+          setVoiceStatus("generating", "Loading pose alert");
+          const response = await fetch(`${apiBase}/api/tts/speak-pose-alert`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ key }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Pose alert request failed (${response.status})`);
+          }
+
+          const data = await response.json();
+          if (data.audioPath) {
+            await playAudioFromPath(data.audioPath, `Pose alert: ${key}`);
+          }
+        } catch (error) {
+          console.error("Pose alert playback failed:", error);
+          setVoiceStatus("idle", "Voice error");
+        }
+      }
+
+      async function speakSuggestionByKey(key) {
+        if (!key) {
+          return;
+        }
+
+        try {
+          setVoiceStatus("generating", "Loading suggestion");
+          const response = await fetch(`${apiBase}/api/tts/speak-suggestion`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ key }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Suggestion request failed (${response.status})`);
+          }
+
+          const data = await response.json();
+          if (data.audioPath) {
+            await playAudioFromPath(data.audioPath, `Suggestion: ${key}`);
+          }
+        } catch (error) {
+          console.error("Suggestion playback failed:", error);
+          setVoiceStatus("idle", "Voice error");
+        }
+      }
+
+      async function pregenerateRealtimePack(force = false) {
+        const response = await fetch(`${apiBase}/api/tts/pregenerate-realtime-pack`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ force }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Realtime pack generation failed (${response.status})`);
+        }
+
+        return response.json();
       }
 
       async function replayLastVoice() {
@@ -1169,6 +1251,13 @@
       analyzeBtn.addEventListener("click", analyzeWorkspace);
       applyActionsBtn.addEventListener("click", applySuggestedActions);
       replayVoiceBtn.addEventListener("click", replayLastVoice);
+
+      window.workspaceVoice = {
+        speakPoseAlert: speakPoseAlertByKey,
+        speakSuggestion: speakSuggestionByKey,
+        pregenerateRealtimePack,
+        replayLastVoice,
+      };
 
       startCamera();
     </script>

@@ -30,6 +30,7 @@ ENV/
 .ruff_cache/
 .coverage
 coverage/
+.tts-venv/
 
 # Build output
 dist/
